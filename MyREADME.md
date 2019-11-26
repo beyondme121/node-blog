@@ -1,0 +1,772 @@
+```js
+const http = require("http");
+const qs = require("querystring");
+
+const server = http.createServer((req, res) => {
+  console.log("method: ", req.method);
+  const url = req.url;
+  console.log("url: ", url);
+  req.query = qs.parse(url.split("?")[1]);
+  console.log("query: ", req.query);
+  res.end(JSON.stringify(req.query));
+});
+
+server.listen(3000, () => {
+  console.log("server start");
+});
+```
+
+nodejs 处理 post 请求
+
+```js
+const http = require("http");
+const qs = require("querystring");
+
+const server = http.createServer((req, res) => {
+  if (req.method === "POST") {
+    console.log("content-type", req.headers["content-type"]);
+    let postdata = "";
+    req.on("data", chunk => {
+      postdata += chunk;
+    });
+    req.on("end", () => {
+      res.end(postdata.toString());
+    });
+  }
+});
+
+server.listen(3000, () => {
+  console.log("server start");
+});
+```
+
+综合实例
+
+localhost:3000/api/blog?name=sanfeng
+
+```json
+{
+  "method": "GET",
+  "url": "/api/blog?name=sanfeng",
+  "path": "/api/blog",
+  "query": {
+    "name": "sanfeng"
+  }
+}
+```
+
+```js
+const http = require("http");
+const qs = require("querystring");
+
+const server = http.createServer((req, res) => {
+  const method = req.method;
+  const url = req.url;
+  const path = url.split("?")[0];
+  const query = qs.parse(url.split("?")[1]);
+  // 设置返回格式为 JSON, 这里返回的是返回值的类型, 即使返回的是字符串, 说明的也是字符串的类型是JSON格式
+  res.setHeader("Content-Type", "application/json");
+  const resData = {
+    method,
+    url,
+    path,
+    query
+  };
+  // 返回
+  if (method === "GET") {
+    res.end(JSON.stringify(resData));
+  }
+  if (method === "POST") {
+    let postData = "";
+    req.on("data", chunk => {
+      postData += chunk;
+    });
+    req.on("end", () => {
+      resData.postData = postData.toString();
+      res.end(JSON.stringify(resData));
+    });
+  }
+});
+
+server.listen(3000, () => {
+  console.log("server start");
+});
+```
+
+### 搭建项目环境
+
+- bin/www.js
+
+```js
+const http = require("http");
+const serverHandle = require("../app");
+const PORT = 3000;
+
+const server = http.createServer(serverHandle);
+server.listen(PORT);
+```
+
+- app.js
+
+```js
+const serverHandle = (req, res) => {
+  // 设置返回格式
+  res.setHeader("Content-Type", "application/json");
+  const resData = {
+    name: "sanfeng",
+    env: process.env.NODE_ENV
+  };
+  res.end(JSON.stringify(resData));
+};
+
+module.exports = serverHandle;
+```
+
+- package.json
+
+> 使用了 cross-env, 以及 nodemon, 生产环境使用 pm2, 不能使用 nodemon 了? 为什么?
+
+```js
+{
+  "name": "koa-project",
+  "version": "1.0.0",
+  "description": "",
+  "main": "bin/www.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "cross-env NODE_ENV=dev nodemon ./bin/www.js",
+    "prd": "cross-env NODE_ENV=production pm2 ./bin/www.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "cross-env": "^6.0.3"
+  }
+}
+```
+
+为什么要分离 www.js 和 app.js，www 和 server 的技术有关,app 和业务有关, 不同的功能和场景进行分离开
+
+### 初始化路由
+
+第一步工作，把所有路由调通, 返回假数据
+
+> 博客路由
+
+```js
+const handleBlogRouter = (req, res) => {
+  const method = req.method;
+
+  if (method === "GET" && req.path === "/api/blog/list") {
+    return {
+      msg: "获取博客列表的接口"
+    };
+  }
+  if (method === "GET" && req.path === "/api/blog/detail") {
+    return {
+      msg: "博客详情接口"
+    };
+  }
+  if (method === "POST" && req.path === "/api/blog/new") {
+    return {
+      msg: "新建博客"
+    };
+  }
+  if (method === "POST" && req.path === "/api/blog/update") {
+    return {
+      msg: "update博客"
+    };
+  }
+  if (method === "POST" && req.path === "/api/blog/delete") {
+    return {
+      msg: "删除博客"
+    };
+  }
+};
+
+module.exports = handleBlogRouter;
+```
+
+> 用户路由
+
+```js
+const handleUserRouter = (req, res) => {
+  const method = req.method;
+  // 登录
+  if (method === "POST" && req.path === "/api/user/login") {
+    return {
+      msg: "登录接口"
+    };
+  }
+};
+module.exports = handleUserRouter;
+```
+
+> app.js
+
+```js
+const querystring = require("querystring");
+const handleBlogRouter = require("./src/router/blog");
+const handleUserRouter = require("./src/router/user");
+
+const serverHandle = (req, res) => {
+  // 设置返回格式
+  res.setHeader("Content-Type", "application/json");
+  const url = req.url;
+  req.path = url.split("?")[0];
+  req.query = querystring.parse(url.split("?")[1]);
+
+  const blogData = handleBlogRouter(req, res);
+  if (blogData) {
+    res.end(JSON.stringify(blogData));
+    return;
+  }
+  const userData = handleUserRouter(req, res);
+  if (userData) {
+    res.end(JSON.stringify(userData));
+    return;
+  }
+  // 未命中路由 返回404
+  res.writeHead(404, { "Content-Type": "text/plain" });
+  res.write("404 NOT FOUND\n");
+  res.end();
+};
+
+module.exports = serverHandle;
+```
+
+### 创建数据模型
+
+> 以上的返回数据都是傻白甜的方式 return {msg: "dxxxx"}
+
+```js
+class BaseModel {
+  constructor(data, message) {
+    if (typeof data === "string") {
+      this.message = data;
+      data = null;
+      message = null;
+    }
+    if (data) {
+      this.data = data;
+    }
+    if (message) {
+      this.message = message;
+    }
+  }
+}
+
+class SuccessModel extends BaseModel {
+  constructor(data, message) {
+    super(data, message);
+    this.error = 0;
+  }
+}
+
+class ErrorModel extends BaseModel {
+  constructor(data, message) {
+    super(data, message);
+    this.error = -1;
+  }
+}
+
+module.exports = {
+  SuccessModel,
+  ErrorModel
+};
+```
+
+### 接口设计
+
+#### 1. 获取博客列表
+
+router/blog.js: **只关心路由匹配以及数据返回**
+
+```js
+// 获取博客列表
+if (method === "GET" && req.path === "/api/blog/list") {
+  const author = req.query.author || "";
+  const keyword = req.query.keyword || "";
+  const listData = getList(author, keyword);
+  // 根据model 使用sucessModel...
+  return new SuccessModel(listData);
+}
+```
+
+controller/blog.js: 只关心接收到参数, 进行请求数据以及处理数据, 返回给调用 controller 的 router 路由
+
+```js
+const getList = (author, keyword) => {
+  // 先返回假数据 格式是正确的, 没有对接DB,createtime 通过Date.now()
+  return [
+    {
+      id: 1,
+      title: "标题A",
+      content: "内容A",
+      createtime: 1574091944166,
+      author: "sanfeng"
+    },
+    {
+      id: 2,
+      title: "标题B",
+      content: "内容B",
+      createtime: 1574091977939,
+      author: "lisi"
+    }
+  ];
+};
+
+// 在router中使用controller
+module.exports = {
+  getList,
+  getDetail
+};
+```
+
+测试
+
+http://localhost:3000/api/blog/list
+
+返回结果
+
+```json
+{
+  "data": [
+    {
+      "id": 1,
+      "title": "标题A",
+      "content": "内容A",
+      "createtime": 1574091944166,
+      "author": "sanfeng"
+    },
+    {
+      "id": 2,
+      "title": "标题B",
+      "content": "内容B",
+      "createtime": 1574091977939,
+      "author": "lisi"
+    }
+  ],
+  "error": 0
+}
+```
+
+#### 2. 获取博客详情
+
+router/blog.js
+
+```js
+const { SuccessModel, ErrorModel } = require("../model/resModel");
+const { getDetail } = require("../controller/blog");
+// ...
+if (method === "POST" && req.path === "/api/blog/detail") {
+  const id = req.query.id;
+  const data = getDetail(id);
+  return new SuccessModel(data);
+}
+```
+
+controller/blog
+
+```js
+const getDetail = id => {
+  return {
+    id: 1,
+    title: "标题A",
+    content: "内容A",
+    createtime: 1574091944166,
+    author: "sanfeng"
+  };
+};
+```
+
+测试
+
+http://localhost:3000/api/blog/detail?id=3
+
+结果
+
+#### 3. post 提交数据
+
+因为是异步的, 封装一个 promise
+
+```js
+// callback方式
+const fs = require("fs");
+const path = require("path");
+const fullName = path.resolve(__dirname, "files", "a.json");
+// 读取文件
+fs.readFile(fullName, (err, data) => {
+  if (err) {
+    console.log(err);
+    return;
+  }
+  console.log(data.toString());
+});
+
+// callback方式的函数
+const getFileContent = (fileName, callback) => {
+  const fullFileName = path.resolve(__dirname, "files", fileName);
+  fs.readFile(fullFileName, (err, data) => {
+    if (err) {
+      console.log(err);
+      return;
+    }
+    callback(JSON.parse(data.toString()));
+  });
+};
+
+getFileContent(fullName, aData => {
+  console.log(aData);
+  getFileContent(aData.next, bData => {
+    console.log(bData);
+    getFileContent(bData.next, cData => {
+      console.log(cData);
+    });
+  });
+});
+```
+
+##### callback 写法
+
+```js
+const getFileContent = (fileName, callback) => {
+  const fullFileName = path.resolve(__dirname, "files", fileName);
+  fs.readFile(fullFileName, (err, data) => {
+    if (err) return;
+    callback(JSON.parse(data.toString()));
+  });
+};
+// 调用 cb地狱
+getFileContent("a.json", aData => {
+  console.log(aData);
+  getFileContent(aData.next, bData => {
+    console.log(bData);
+    getFileContent(bData.next, cData => {
+      console.log(cData);
+    });
+  });
+});
+```
+
+##### promise 写法
+
+```js
+const fs = require("fs");
+const path = require("path");
+
+const getFileContent = fileName => {
+  const promise = new Promise((resolve, reject) => {
+    const fullFileName = path.resolve(__dirname, "files", fileName);
+    fs.readFile(fullFileName, (err, data) => {
+      if (err) {
+        reject(err);
+      }
+      resolve(JSON.parse(data.toString()));
+    });
+  });
+  return promise;
+};
+
+getFileContent("a.json")
+  .then(aData => {
+    console.log(aData);
+    return getFileContent(aData.next);
+  })
+  .then(bData => {
+    console.log(bData);
+    return getFileContent(bData.next);
+  })
+  .then(cData => {
+    console.log(cData);
+  });
+```
+
+##### async await 方式
+
+##### 处理 post data 封装函数
+
+promise 方式， app.js
+
+```js
+const getPostData = req => {
+  const promise = new Promise((resolve, reject) => {
+    if (req.method !== "POST") {
+      resolve({});
+      return;
+    }
+    if (req.headers["content-type"] !== "application/json") {
+      resolve({});
+      return;
+    }
+    let postData = "";
+    req.on("data", chunk => {
+      postData += chunk;
+    });
+    req.on("end", () => {
+      if (!postData) {
+        resolve({});
+        return;
+      }
+      resolve(JSON.parse(postData));
+    });
+  });
+  return promise;
+};
+```
+
+```js
+const serverHandle = (req, res) => {
+  // 设置返回格式
+  res.setHeader("Content-Type", "application/json");
+
+  // 获取path
+  const url = req.url;
+  req.path = url.split("?")[0];
+
+  // 解析 query
+  req.query = querystring.parse(url.split("?")[1]);
+
+  // 处理post data
+  getPostData(req).then(postData => {
+    req.body = postData;
+    console.log(req.body);
+    // 处理 blog 路由
+    const blogData = handleBlogRouter(req, res);
+    if (blogData) {
+      res.end(JSON.stringify(blogData));
+      return;
+    }
+
+    // 处理 user 路由
+    const userData = handleUserRouter(req, res);
+    if (userData) {
+      res.end(JSON.stringify(userData));
+      return;
+    }
+
+    // 未命中路由 返回404
+    res.writeHead(404, { "Content-Type": "text/plain" });
+    res.write("404 NOT FOUND\n");
+    res.end();
+  });
+};
+```
+
+#### 4. 新建博客
+
+router -> controller
+
+```js
+const {
+  getList,
+  getDetail,
+  newBlog,
+  updateBlog,
+  deleteBlog
+} = require("../controller/blog");
+
+// 新建博客
+if (method === "POST" && req.path === "/api/blog/new") {
+  const blogData = req.body; // 已经通过promise处理了post data的数据
+  const data = newBlog(blogData);
+  return new SuccessModel(data);
+}
+```
+
+```js
+const newBlog = (data = {}) => {
+  // data 是一个博客对象 包含 title content
+  return {
+    id: 3 // 表示新建博客, 插入DB的id
+  };
+};
+```
+
+#### 5. 更新博客
+
+```js
+// 更新博客 根据id
+if (method === "POST" && req.path === "/api/blog/update") {
+  const result = updateBlog(id, req.body);
+  if (result) {
+    return new SuccessModel(req.body);
+  } else {
+    return new ErrorModel("更新博客失败");
+  }
+}
+```
+
+> controller.js , 返回假数据, 更新成功
+
+```js
+const updateBlog = (id, blogData = {}) => {
+  console.log("update blog", id, blogData);
+  return true;
+};
+```
+
+#### 6. 删除博客
+
+```js
+// 删除博客
+if (method === "POST" && req.path === "/api/blog/delete") {
+  const result = deleteBlog(id);
+  if (result) {
+    return new SuccessModel(req.body);
+  } else {
+    return new ErrorModel("删除博客失败");
+  }
+}
+```
+
+```js
+const deleteBlog = id => {
+  return true;
+};
+```
+
+#### 7. 用户登录
+
+假数据 router/user.js, 只关注 method 和 path
+
+```js
+const { loginCheck } = require("../controller/user");
+const { SuccessModel, ErrorModel } = require("../model/resModel");
+const handleUserRouter = (req, res) => {
+  const method = req.method;
+  // 登录
+  if (method === "POST" && req.path === "/api/user/login") {
+    const { username, password } = req.body;
+    const result = loginCheck(username, password);
+    if (result) {
+      return new SuccessModel();
+    }
+    return new ErrorModel("登录失败");
+  }
+};
+module.exports = handleUserRouter;
+```
+
+> controller/user.js, 判断用户名密码
+
+```js
+const loginCheck = (username, password) => {
+  // 先使用假数据
+  if (username === "sanfeng" && password === "123") {
+    return true;
+  }
+  return false;
+};
+
+module.exports = {
+  loginCheck
+};
+```
+
+#### 8. 总结
+
+1. nodejs 处理 http 请求常用技能(method, url, query, postdata, req.headers, content-type, res.setHeader)
+
+2. postman 使用
+
+3. nodejs 接口(未连接 DB,未使用登录) 但是接口调通
+
+4. 为何要讲 router 和 controller 分开?
+
+   router 处理路由相关，controller 处理数据
+
+#### 9. 路由和 API
+
+API: 前端与后端，不同子系统之间对接的一个术语
+
+url(路由): `/api/blog/list` get, 输入，输出
+
+路由: API 的一部分 后端系统内部的一个模块定义，后端去实现
+
+### 连接数据库 MySQL
+
+- workbench 官方可视化开发工具
+
+### sql 注入
+
+- mysql 中的注释 --,--后面要有个一个空格
+- 比如 username 输入为: sanfeng'-- (此处有个空格) 之后的都是注释,
+- 在提交数据的时候，都要防止 sql 注入
+
+* 更新数据可能会触发 mysql 的安全模式
+  `SET SQL_SAFE_UPDATES=0`
+
+### Koa 实现 session 以及 redis 存储
+
+1. 安装
+   npm i koa-generic-session koa-redis redis
+2. app.js 中
+
+```js
+// 引入session以及session存储的机制 redis
+const session = require("koa-generic-session");
+const redisStore = require("koa-redis");
+
+// 在"注册"路由之前配置session
+app.keys = ["ROOTsanfeng123"];
+app.use(
+  session({
+    cookie: {
+      path: "/",
+      httpOnly: true,
+      maxAge: 24 * 60 * 60 * 1000
+    },
+    store: redisStore({
+      all: "127.0.0.1:6379" // 先写死本地的redis
+    })
+  })
+);
+
+// 注册路由
+app.use(user.routes(), user.allowedMethods());
+app.use(blog.routes(), blog.allowedMethods());
+```
+
+3. 在user.js写一个测试session的接口
+
+```js
+router.get('/session-test', async (ctx, next) => {
+    // 此处要使用null, 不能使用===, 否则第一次访问返回的viewCount是null
+    if (ctx.session.viewCount == null) {
+        
+    }
+})
+```
+
+> 单独判断是否nul
+
+```js
+let str = null
+console.log(str == null)		// true
+console.log(str === null)		// true
+
+```
+
+
+
+> 同时判断 null 和 undefined 
+>
+> 虽然null 和 undefined 不一样，但是这样判断确实是可行的 
+
+```js
+let str = null
+str == null //true
+str = undefined
+str == null // true
+```
+
+> 同时判断 null、undefined、数值0、false 
+
+```js
+if (!str) {
+    console.log('---------')
+}
+```
+
