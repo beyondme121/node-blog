@@ -770,3 +770,238 @@ if (!str) {
 }
 ```
 
+
+
+### Koa中的日志
+
+`npm i koa-morgan`
+
+app.js
+
+```js
+// 日志记录
+const path = require('path')
+const fs = require('fs')
+const morgan = require('koa-morgan')
+```
+
+```js
+// 日志记录到文件access.log
+const ENV = process.env.NODE_ENV
+if (ENV !== 'production') {
+  // 开发或测试环境
+  app.use(morgan('dev'))
+} else {
+  const logFileName = path.join(__dirname, 'logs', 'access.log')
+  const ws = fs.createWriteStream(logFileName, {
+    flags: 'a'
+  })
+  app.use(morgan('combined', {
+    stream: ws
+  }))
+}
+
+```
+
+
+
+KOA2中间件原理
+
+回顾使用
+
+分析如何使用
+
+
+
+分析
+
+1. app.use注册中间件 收集起来
+2. 实现next机制，即上一个通过next触发下一个
+3. 不涉及method和path的判断，因为没有路由功能
+
+
+
+### pm2线上环境配置
+
+安装 npm i pm2 -g
+
+```json
+"scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "cross-env NODE_ENV=env nodemon app.js",
+    "prd": "cross-env NODE_ENV=production pm2 start app.js"
+  },
+```
+
+npm run prd
+
+
+
+$ pm2 list
+┌─────┬──────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───
+────────┬──────────┬──────────┬──────────┬──────────┐
+│ id  │ name │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├─────┼──────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───
+────────┼──────────┼──────────┼──────────┼──────────┤
+│ 0   │ app  │ default     │ 1.0.0   │ fork    │ 21256    │ 23s    │ 0    │ online    │ 0%       │ 29.1mb   │ CNZ… │ disabled │
+└─────┴──────┴─────────────┴─────────┴─────────┴──────────┴────────┴──────┴───
+────────┴──────────┴──────────┴──────────┴──────────┘
+
+
+
+常用命令
+
+```bash
+pm2 start app.js 或者配置文件
+pm2 list
+pm2 restart <AppName>/<id>
+pm2 stop <AppName>/<id>
+pm2 delete <AppName>/<id>
+pm2 info <AppName>/<id>
+pm2 log <AppName>/<id>
+pm2 monit <AppName>/<id>   // CPU 内存情况
+```
+
+
+
+总结
+
+1. 与nodemon的区别，nodemon是前台执行的, 当前窗口一直挂起，pm2会把执行权限交还给用户，不挂起
+
+#### 进程守护
+
+node app.js 和 nodemon 进程崩溃则不能访问，nodemon会自动监听自动启动
+
+pm2遇到进程崩溃，会自动重启
+
+
+
+### 配置
+
+- 新建pm2配置文件（包括进程数量，日志文件目录等）
+- 修改pm2启动命令，重启
+- 访问server 检查日志文件的内容（日志记录是否生效）
+
+新建配置文件 pm2.config.json
+
+新建目录 logs目录, err.log, out.log
+
+```json
+{
+    "apps": {
+        "name": "pm2-test-server",
+        "script": "app.js",
+        "watch": true,
+        "ignore_watch": [
+            "node_modules",
+            "logs"
+        ],
+        "error_file": "logs/err.log",
+        "out_file": "logs/out.log",
+        "log_date_format": "YYYY-MM-DD HH:mm:ss"
+    }
+}
+```
+
+修改package.json的启动命令
+
+```json
+{ 
+	"prd": "cross-env NODE_ENV=production pm2 start pm2.conf.json"
+}
+```
+
+然后命令
+
+pm2 stop app, 
+
+pm2 delete app
+
+
+
+```js
+const http = require('http')
+let count = 0
+const server = http.createServer((req, res) => {
+  console.log(req.url, ' -- ', req.method, ' -- ', req.url.indexOf('?') >= 0 ? req.url.split('?')[1].split('=')[1] : 'none');
+
+  if (req.url === '/favicon.ico') {
+    // console.log('再/favicon.ico中打印');
+    return
+  }
+  console.log('正常日志记录在文件中');
+  if (req.url === '/err') {
+    throw new Error('假装出错了,也会记录在日志中')
+  }
+  res.end(JSON.stringify({
+    username: 'sanfeng',
+    age: count++
+  }))
+})
+
+server.listen(8080, () => {
+  console.log('server start at port 8080');
+})
+```
+
+![image-20191127215102440](C:\Users\CNZHLIU14\AppData\Roaming\Typora\typora-user-images\image-20191127215102440.png)
+
+
+
+#### 为何使用多进程
+
+- 回顾session时说过，操作系统限制一个进程的内容，32位OS, 一个进程大概是1.6G内存
+- 内存：无法充分利用机器全部内存
+- CPU: 无法充分利用多核CPU的优势, 一个核就可以启动一个进程，8核就可以有8个进程，加入每个进程占用1.6G，那就可以使用1.6*8=12.8G左右的内存
+
+
+
+多进程和redis
+
+1. 系统内存中，多个进程之间的内存是无法共享的，就如同session，qq的session不能和淘宝的session共享内存，否则就乱套了
+2. ![image-20191127215654772](C:\Users\CNZHLIU14\AppData\Roaming\Typora\typora-user-images\image-20191127215654772.png)
+
+
+
+3. 解决方法就是把多进程中使用到的session保存到redis中
+
+![image-20191127215742246](C:\Users\CNZHLIU14\AppData\Roaming\Typora\typora-user-images\image-20191127215742246.png)
+
+
+
+- 多进程之间，内存无法共享，这也是多进程带来的弊端，不过这也是现状
+
+- 多进程访问一个redis，实现数据共享，这也是redis的核心价值之一
+
+  
+
+  多进程的配置
+
+```js
+"instances": 4
+```
+
+如果是多个实例，就会生成对应的个数实例的log日志，out.log,err.log各4个日志
+
+pm2内部实现了负载均衡，每个日志记录的数量可能也不一样
+
+
+
+```json
+{
+  "apps": {
+    "name": "pm2-test",
+    "script": "app.js",
+    "watch": true,
+    "ignore_watch": ["node_modules", "logs"],
+    "instances": 6,
+    "error_file": "logs/err.log",
+    "out_file": "logs/out.log",
+    "log_date_format": "YYYY-MM-DD HH:mm:ss"
+  }
+}
+```
+
+
+
+![image-20191127222525672](C:\Users\CNZHLIU14\AppData\Roaming\Typora\typora-user-images\image-20191127222525672.png)
