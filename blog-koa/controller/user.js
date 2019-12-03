@@ -10,8 +10,6 @@ const login = async (username, password) => {
   password = escape(password)
   const sql = `select username, realname from users 
     where username=${username} and pwd=${password}`;
-  console.log("sql is ", sql);
-
   const rows = await exec(sql)
   return rows[0] || {}
 }

@@ -72,8 +72,7 @@ const updateBlog = async (id, blogData = {}) => {
 
 const deleteBlog = async (id, author) => {
   author = escape(xss(author))
-  const sql = `delete from blogs 
-    where id=${id} and author=${author}`
+  const sql = `delete from blogs where id=${id} and author=${author}`
   console.log('delete blog sql: ', sql);
   const delData = await exec(sql)
   if (delData.affectedRows > 0) {

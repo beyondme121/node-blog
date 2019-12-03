@@ -20,8 +20,6 @@ const morgan = require('koa-morgan')
 
 
 // 引入路由
-const index = require('./routes/index')
-const users = require('./routes/users')
 const user = require('./routes/user')
 const blog = require('./routes/blog')
 
@@ -74,7 +72,6 @@ app.use(session({
     maxAge: 24 * 60 * 60 * 1000
   },
   store: redisStore({
-    // all: '127.0.0.1:6379'   // 先写死本地的redis
     all: `${REDIS_CONF.host}:${REDIS_CONF.port}`
   })
 }))
