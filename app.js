@@ -70,7 +70,7 @@ const serverHandle = (req, res) => {
   let needSetCookie = false
   let userId = req.cookie.userid
   if (!userId) {
-    neddSetCooie = true
+    needSetCookie = true
     userId = `${Date.now()}_${Math.random()}`
     // 在redis设置
     set(userId, {})
